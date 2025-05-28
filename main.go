@@ -55,7 +55,8 @@ func (ds *DatabaseService) Close() error {
 
 // readQueryHandler is the handler function for the 'read_query' tool.
 func (ds *DatabaseService) readQueryHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	query, ok := request.Params.Arguments["query"].(string)
+	args := request.GetArguments()
+	query, ok := args["query"].(string)
 	if !ok || query == "" {
 		return mcp.NewToolResultError("Missing or invalid 'query' argument."), nil
 	}
@@ -116,7 +117,8 @@ func (ds *DatabaseService) listTablesHandler(ctx context.Context, request mcp.Ca
 
 // describeTableHandler provides schema information for a specific table.
 func (ds *DatabaseService) describeTableHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	tableName, ok := request.Params.Arguments["table_name"].(string)
+	args := request.GetArguments()
+	tableName, ok := args["table_name"].(string)
 	if !ok || tableName == "" {
 		return mcp.NewToolResultError("Missing or invalid 'table_name' argument."), nil
 	}
@@ -234,7 +236,7 @@ func processRows(rows *sql.Rows) (*mcp.CallToolResult, error) {
 func main() {
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8080" // Default port
+		port = "8080"
 		log.Printf("PORT environment variable not set, using default %s", port)
 	}
 	dbFile := os.Getenv("DB_FILE")
@@ -272,7 +274,6 @@ func main() {
 	listTablesTool := mcp.NewTool(
 		"list_tables",
 		mcp.WithDescription("List all user tables in the SQLite database"),
-		// No input properties needed, schema is implicitly {"type": "object", "properties": {}}
 	)
 	mcpServer.AddTool(listTablesTool, dbService.listTablesHandler)
 
@@ -287,26 +288,15 @@ func main() {
 	)
 	mcpServer.AddTool(describeTableTool, dbService.describeTableHandler)
 
-	// --- Configure and Start HTTP (SSE) Server ---
 	listenAddr := fmt.Sprintf(":%s", port)
-	baseURL, ok := os.LookupEnv("BASE_URL")
-	if !ok {
-		log.Fatal("BASE_URL is not set")
-	}
+	server := server.NewStreamableHTTPServer(mcpServer)
 
-	// Create SSE Server
-	sseServer := server.NewSSEServer(
-		mcpServer,
-		server.WithBaseURL(baseURL),
-	)
-
-	log.Printf("Starting MCP SSE server on %s (Base URL: %s)", listenAddr, baseURL)
+	log.Printf("Starting MCP HTTP server on %s", listenAddr)
 	log.Printf("Database file: %s", dbFile)
 	log.Printf("Read-only access enabled.")
 	log.Printf("Available tools: read_query, list_tables, describe_table")
 
-	// Start the SSE server
-	if err := sseServer.Start(listenAddr); err != nil {
+	if err := server.Start(listenAddr); err != nil {
 		log.Fatalf("SSE Server error: %v", err)
 	}
 }
