@@ -129,10 +129,9 @@ func (ds *DatabaseService) describeTableHandler(ctx context.Context, request mcp
 		return mcp.NewToolResultError("Invalid characters in table name."), nil
 	}
 
-	// Use PRAGMA table_info to get schema information
-	// Note: PRAGMA statements might not work with QueryContext parameters in all drivers,
-	// so we use fmt.Sprintf here after basic validation. Be very careful with this approach.
-	query := fmt.Sprintf("PRAGMA table_info(%s);", tableName)
+	// Use PRAGMA table_info with properly quoted table name to handle spaces and special characters
+	// Quote the table name with double quotes to handle spaces and other special characters
+	query := fmt.Sprintf("PRAGMA table_info(\"%s\");", strings.ReplaceAll(tableName, "\"", "\"\""))
 
 	rows, err := ds.db.QueryContext(ctx, query)
 	if err != nil {
